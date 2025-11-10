@@ -1,0 +1,134 @@
+version: '3.3'
+
+services:
+  # MongoDB database
+  mongo:
+    image: mongo:7
+    container_name: vapi-mongo
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-vapi}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-admin}
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - vapi-network
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Keycloak identity management
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: vapi-keycloak
+    environment:
+      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME:-localhost}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HTTP_PORT: 8081
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+    command: start-dev
+    ports:
+      - "${KEYCLOAK_PORT:-8081}:8081"
+    networks:
+      - vapi-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c 'exec 3<>/dev/tcp/localhost/8081 && printf \"GET /realms/master HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n\" >&3 && head -n1 <&3 | grep \"200\"'",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Backend API service
+  backend:
+    build:
+      context: ../vapi-backend
+      dockerfile: Dockerfile.api
+    container_name: vapi-backend
+    environment:
+      VAPI_API_KEY: ${VAPI_API_KEY}
+      VAPI_BASE_URL: ${VAPI_BASE_URL:-https://api.vapi.ai}
+      VAPI_TIMEOUT: ${VAPI_TIMEOUT:-30}
+      PORT: 8080
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8081}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-vapi}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-vapi-frontend}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    networks:
+      - vapi-network
+    depends_on:
+      - keycloak
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend Usecases service
+  usecases:
+    build:
+      context: ../vapi-backend
+      dockerfile: Dockerfile.usecases
+    container_name: vapi-usecases
+    environment:
+      MONGO_URI: ${MONGO_URI:-}
+      MONGO_HOST: ${MONGO_HOST:-mongo}
+      MONGO_DATABASE: ${MONGO_DATABASE:-vapi}
+      MONGO_USERNAME: ${MONGO_USERNAME:-admin}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:-admin}
+      PORT: 8080
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8081}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-vapi}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-vapi-frontend}
+    ports:
+      - "${USECASES_PORT:-8082}:8080"
+    networks:
+      - vapi-network
+    depends_on:
+      - mongo
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --tries=1 --timeout=5 -O- http://localhost:8080/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend service
+  frontend:
+    build:
+      context: ../vapi-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-http://localhost:8081}
+        VITE_KEYCLOAK_REALM: ${VITE_KEYCLOAK_REALM:-vapi}
+        VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-vapi-frontend}
+        VITE_API_BASE_URL: /api
+    container_name: vapi-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    networks:
+      - vapi-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  vapi-network:
+    driver: bridge
+
+volumes:
+  mongo_data:
+    driver: local
+
