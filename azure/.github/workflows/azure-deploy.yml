@@ -1,0 +1,86 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+env:
+  AZURE_RESOURCE_GROUP: vapi-rg
+  AZURE_LOCATION: eastus
+  ACR_NAME: vapiacr
+  CONTAINER_APP_ENV: vapi-env
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Login to Azure Container Registry
+      run: |
+        az acr login --name ${{ env.ACR_NAME }}
+
+    - name: Build and push Backend API
+      run: |
+        az acr build \
+          --registry ${{ env.ACR_NAME }} \
+          --image vapi-backend:${{ github.sha }} \
+          --image vapi-backend:latest \
+          --file vapi-backend/Dockerfile.api \
+          vapi-backend/
+
+    - name: Build and push Usecases Service
+      run: |
+        az acr build \
+          --registry ${{ env.ACR_NAME }} \
+          --image vapi-usecases:${{ github.sha }} \
+          --image vapi-usecases:latest \
+          --file vapi-backend/Dockerfile.usecases \
+          vapi-backend/
+
+    - name: Build and push Frontend
+      run: |
+        az acr build \
+          --registry ${{ env.ACR_NAME }} \
+          --image vapi-frontend:${{ github.sha }} \
+          --image vapi-frontend:latest \
+          --file vapi-frontend/Dockerfile \
+          --build-arg VITE_KEYCLOAK_URL=${{ secrets.VITE_KEYCLOAK_URL }} \
+          --build-arg VITE_KEYCLOAK_REALM=${{ secrets.VITE_KEYCLOAK_REALM }} \
+          --build-arg VITE_KEYCLOAK_CLIENT_ID=${{ secrets.VITE_KEYCLOAK_CLIENT_ID }} \
+          --build-arg VITE_API_BASE_URL=/api \
+          --build-arg VITE_USECASES_BASE_URL=/usecases \
+          vapi-frontend/
+
+    - name: Update Container Apps
+      run: |
+        ACR_LOGIN_SERVER=$(az acr show --name ${{ env.ACR_NAME }} --query loginServer -o tsv)
+        
+        # Update backend
+        az containerapp update \
+          --name vapi-backend \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+          --image ${ACR_LOGIN_SERVER}/vapi-backend:${{ github.sha }}
+        
+        # Update usecases
+        az containerapp update \
+          --name vapi-usecases \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+          --image ${ACR_LOGIN_SERVER}/vapi-usecases:${{ github.sha }}
+        
+        # Update frontend
+        az containerapp update \
+          --name vapi-frontend \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+          --image ${ACR_LOGIN_SERVER}/vapi-frontend:${{ github.sha }}
+

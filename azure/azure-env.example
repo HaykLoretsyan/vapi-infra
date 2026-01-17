@@ -1,0 +1,40 @@
+# Azure Deployment Environment Variables
+# Copy this file to .env and fill in your values
+
+# Azure Configuration
+RESOURCE_GROUP=vapi-rg
+LOCATION=eastus
+ACR_NAME=vapiacr
+ENV_NAME=vapi-env
+
+# Keycloak Configuration
+KEYCLOAK_HOSTNAME=your-keycloak-domain.azurecontainerapps.io
+KEYCLOAK_ADMIN=admin
+KEYCLOAK_ADMIN_PASSWORD=your-secure-password-here
+KEYCLOAK_REALM=vapi
+KEYCLOAK_CLIENT_ID=vapi-frontend
+
+# PostgreSQL (Azure Database for PostgreSQL)
+POSTGRES_HOST=vapi-postgres.postgres.database.azure.com
+POSTGRES_DB=keycloak
+POSTGRES_USER=keycloak
+POSTGRES_PASSWORD=your-postgres-password-here
+
+# MongoDB (Azure Cosmos DB with MongoDB API)
+# Get connection string from Azure Portal: Cosmos DB Account -> Connection Strings
+MONGO_CONNECTION_STRING=mongodb://vapi-mongodb:your-password@vapi-mongodb.mongo.cosmos.azure.com:10255/?ssl=true&replicaSet=globaldb
+MONGO_DATABASE=vapi
+
+# VAPI API
+VAPI_API_KEY=your-vapi-api-key-here
+VAPI_BASE_URL=https://api.vapi.ai
+VAPI_TIMEOUT=30
+
+# Service Authentication
+SERVICE_AUTH_TOKEN=your-service-auth-token-here
+
+# Service URLs (will be set automatically after deployment)
+# KEYCLOAK_URL=https://vapi-keycloak.azurecontainerapps.io
+# BACKEND_URL=http://vapi-backend.azurecontainerapps.io
+# USECASES_URL=http://vapi-usecases.azurecontainerapps.io
+

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vapi-config
+  namespace: vapi
+data:
+  KEYCLOAK_REALM: "vapi"
+  KEYCLOAK_CLIENT_ID: "vapi-frontend"
+  MONGO_DATABASE: "vapi"
+  PORT: "8080"
+
